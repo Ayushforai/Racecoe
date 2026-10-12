@@ -37,6 +37,7 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 - **Venue clarification** — multi-GP countries (e.g. Italy, USA) prompt for the specific circuit (Monza vs Imola, Austin vs Miami vs Las Vegas)
 - **Driver clarification** — lap and telemetry queries require a named driver; no silent default to Hamilton
 - **Driver number lookup** — names, surnames, and `#NN` tokens map to car numbers via `data/driver_numbers.json` (OpenF1 grid). `F1DriversDataset.csv` helps recognize 868 canonical driver names in query text before number lookup.
+- **Surname disambiguation** — when several drivers share a surname in `F1DriversDataset.csv`, Racecoe defaults to whoever is on the OpenF1 grid for that season (`driver_numbers.json`). Legacy drivers are used only if their forename appears in the query (e.g. `jos verstappen`). Optional overrides: `data/driver_ambiguity.json` (see `utils/driver_ambiguity.py`).
 
 ### Live & quantitative data 📊
 - **OpenF1 integration** — fastest lap, specific-lap lookups, and live telemetry when a session is actually live
@@ -150,7 +151,13 @@ python server.py                    # http://127.0.0.1:5001 — CSV archive
 
 **CLI only:** `python app.py` from a **Terminal** tab (not the IDE Debug Console) so backspace/arrows work.
 
-To point a local `server.py` at Compose Postgres only:
+### PostgreSQL (default in Docker)
+
+`docker compose up` starts **Postgres + the app**. On first boot, `scripts/start_web.py` applies `db/schema.sql` and loads Ergast CSVs into `f1.*` if the archive is empty. Chat sessions go to `chat.*`.
+
+`python server.py` without `DATABASE_URL` still uses CSVs and in-memory sessions (what the unit tests do).
+
+Local Postgres without the full stack:
 
 ```bash
 docker compose up -d postgres
@@ -270,7 +277,7 @@ Planned and natural extensions:
 **Ops**
 - **Render Standard (2GB)** + `F1_SKIP_WARMUP=0` for faster first RAG answer; keep-alive cron on free tier.
 - Persist **HF model cache** in Docker volume to shorten cold starts.
-- **Horizontal scale** already uses Postgres `chat.*` in Docker/Render; in-memory `_sessions` remains the no-DB fallback.
+- **Horizontal scale** uses Postgres `chat.*` sessions when `SESSION_STORE=postgres`; in-memory `_sessions` remains the no-DB fallback.
 
 **Contributions welcome:** tests in `tests/`, issues in `ISSUES.md`, small focused PRs on router, `f1_api.py`, or UI.
 
@@ -645,29 +652,17 @@ ISSUES.md               # Bug backlog and fix history
 
 ## PostgreSQL in Racecoe
 
-**Default for Docker Compose and Render.** The same lookup functions in `utils/historical_db.py` dispatch to `utils/historical_pg.py`. `server.py` uses `utils/chat_store.py` for sessions.
+Docker and Render treat SQL as the archive and session store. The same lookup functions in `utils/historical_db.py` dispatch to `utils/historical_pg.py` when `HISTORICAL_BACKEND=postgres` (or `auto` with a loaded `f1.races` table). `server.py` uses `utils/chat_store.py` the same way.
 
-| Path | Archive | Sessions |
-|------|---------|----------|
-| `docker compose up` / Render Blueprint | Postgres `f1.*` (`HISTORICAL_BACKEND=postgres`) | Postgres `chat.*` (`SESSION_STORE=postgres`) |
-| `python server.py` with no `DATABASE_URL` | pandas CSVs | In-memory (tests stay offline) |
-| Unreachable DB at boot (`start_web.py`) | Falls back to CSVs | Falls back to memory |
+| Path | What you get |
+|------|----------------|
+| `docker compose up` / Render Blueprint | Always-on Postgres, `DATABASE_URL` injected, schema + CSV load on empty DB |
+| `python server.py` with no `DATABASE_URL` | CSV archive + in-memory sessions (tests stay offline) |
+| Unreachable DB at boot | `start_web.py` falls back to CSV so the API still starts |
 
-First Docker/Render boot applies `db/schema.sql` and loads `data/historical_csvs/` if `f1.races` is empty. Later boots skip the load.
+Benefits you can see in practice: indexed joins instead of full CSV scans, chat history that survives process restarts, and a clear module boundary (`csv` vs `postgres`) without changing the chat router.
 
-| Schema | Role |
-|--------|------|
-| `f1` | Ergast archive: seasons, circuits, drivers, constructors, races, results, qualifying, sprint, lap_times, pit_stops, status |
-| `chat` | `sessions` + `turns` (last 9 turns persist across restarts; LLM sees the last 4) |
-| `app.query_log` | Write-only log of questions (`session_id`, optional `user_id`, route). Never used as answer context |
-| `app.result_cache` | Structured archive/OpenF1 packets keyed by year/venue/driver — not LLM text. Short TTL for the current season |
-| `rag` / other `app.*` | Reserved (FAISS stays on disk) |
-
-Benefits: indexed joins instead of full CSV scans, persistent chat history, and a `csv` vs `postgres` module boundary without changing the chat router.
-
-Past chat answers are **not** indexed as knowledge. Repeats get faster via `result_cache` on structured lookups; `query_log` is for later analysis (which CSVs/PDFs to add), not for the prompt.
-
-FAISS regulation RAG and **live** OpenF1 are not cached. Render’s database is paid (no free-tier Postgres).
+FAISS regulation/history RAG and live OpenF1 HTTP are **not** stored in Postgres.
 
 ## Data Notes 🗒️
 
