@@ -6,6 +6,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from utils.result_cache import cached
 from utils.venues import MULTI_GP_COUNTRIES, multi_gp_clarification
 
 BASE_URL = "https://api.openf1.org/v1"
@@ -413,6 +414,7 @@ def get_session_info(country: str, year: int = 2024, location: str | None = None
     }
 
 
+@cached("openf1_fastest_lap", "year", "country", "driver_number", "location", family="openf1")
 def get_fastest_lap_of_race(
     year: int,
     country: str,
@@ -439,6 +441,15 @@ def get_fastest_lap_of_race(
         return f"Historical Archive Error: {str(e)}"
 
 
+@cached(
+    "openf1_historical_lap",
+    "year",
+    "country",
+    "driver_number",
+    "lap_number",
+    "location",
+    family="openf1",
+)
 def get_historical_lap(
     year: int,
     country: str,
@@ -619,6 +630,7 @@ def _fetch_sessions_for_year(
     return completed
 
 
+@cached("openf1_speed_trap_season", "year", "driver_number", family="openf1")
 def get_max_speed_trap_season(
     year: int,
     driver_number: int | None = None,
@@ -654,6 +666,7 @@ def get_max_speed_trap_season(
         return f"Historical Archive Error: {str(e)}"
 
 
+@cached("openf1_speed_trap", "year", "country", "location", "driver_number", family="openf1")
 def get_max_speed_trap(
     year: int,
     country: str,
@@ -755,6 +768,14 @@ def _add_days_openf1(iso: str, days: int) -> str:
         return iso
 
 
+@cached(
+    "openf1_session_classification",
+    "year",
+    "country",
+    "session_name",
+    "location",
+    family="openf1",
+)
 def get_openf1_session_classification(
     year: int,
     country: str,

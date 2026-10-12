@@ -20,6 +20,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 from app import initialize_pipeline, process_query
 from utils import chat_store
 from utils.db import health_payload as database_health
+from utils import query_log
 from utils.llm import active_model_label, describe_config, get_model_name
 from utils.season_calendar import get_season_calendar, list_calendar_years
 
@@ -49,6 +50,7 @@ def _cors_origins() -> list[str]:
 class ChatRequest(BaseModel):
     message: str = ""
     session_id: str | None = None
+    user_id: str | None = None
 
 
 class ResetRequest(BaseModel):
@@ -116,11 +118,14 @@ app.add_middleware(
 )
 
 
-def _run_query(session_id: str, message: str) -> dict | None:
+def _run_query(session_id: str, message: str, user_id: str | None = None) -> dict | None:
+    query_log.bind(session_id=session_id, user_id=user_id)
     with _session_lock(session_id):
         history = chat_store.load_history(session_id)
         result = process_query(history, message)
         chat_store.save_history(session_id, history)
+        route = (result or {}).get("category") or ""
+        query_log.record(message, route=route, session_id=session_id, user_id=user_id)
         return result
 
 
@@ -149,7 +154,8 @@ async def _handle_chat(payload: ChatRequest) -> JSONResponse | dict:
         return JSONResponse({"error": "Empty query."}, status_code=400)
 
     session_id = (payload.session_id or "").strip() or str(uuid.uuid4())
-    result = await asyncio.to_thread(_run_query, session_id, message)
+    user_id = (payload.user_id or "").strip() or None
+    result = await asyncio.to_thread(_run_query, session_id, message, user_id)
     return _chat_payload(result, session_id)
 
 

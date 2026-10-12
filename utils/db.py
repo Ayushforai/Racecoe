@@ -123,13 +123,39 @@ def connect(*, autocommit: bool = False) -> Iterator:
         conn.close()
 
 
+_SQL_STARTERS = (
+    "create",
+    "alter",
+    "drop",
+    "insert",
+    "update",
+    "delete",
+    "select",
+    "grant",
+    "comment",
+    "set",
+    "do",
+    "begin",
+    "commit",
+)
+
+
 def _statements(sql_text: str) -> list[str]:
+    cleaned_lines: list[str] = []
+    for line in sql_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        cleaned_lines.append(line)
     chunks: list[str] = []
-    for raw in sql_text.split(";"):
-        lines = [line for line in raw.splitlines() if line.strip() and not line.strip().startswith("--")]
-        stmt = "\n".join(lines).strip()
-        if stmt:
-            chunks.append(stmt)
+    for raw in "\n".join(cleaned_lines).split(";"):
+        stmt = raw.strip()
+        if not stmt:
+            continue
+        first = stmt.split()[0].lower()
+        if first not in _SQL_STARTERS:
+            continue
+        chunks.append(stmt)
     return chunks
 
 

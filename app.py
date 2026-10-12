@@ -14,6 +14,7 @@ from utils.llm import generate as llm_generate, get_model_name
 from utils.driver_numbers import enrich_telemetry_params
 from utils.race_schedule import RACE_NOT_HELD_RESULTS_MESSAGE, race_results_unavailable_reason
 from utils.router import (
+    CONVERSATION_MEMORY_TURNS,
     ambiguous_query_response,
     extract_telemetry_params,
     get_ambiguous_query_response,
@@ -73,6 +74,7 @@ from utils.historical_db import (
     get_qualifying_results,
     get_sprint_results,
 )
+from utils.query_log import bind as bind_query_log, record as record_query
 from utils.session_results import is_session_choice_reply, parse_session_choice, session_results_offer
 from utils.speed_records import best_speed_trap_record, speed_record_to_packet
 from utils.currency import apply_currency_display, get_currency_prompt_rules, refresh_exchange_rates
@@ -91,7 +93,6 @@ from utils.venues import (
 MODEL_NAME = get_model_name()
 
 DEFAULT_YEAR = 2026
-CONVERSATION_MEMORY_TURNS = 5
 
 REGULATION_CATEGORIES = frozenset({"general", "sporting", "technical", "financial", "operational"})
 
@@ -3069,7 +3070,10 @@ def main():
         user_query = read_user_query("Engineer Query > ")
         if user_query.lower() in ['exit', 'quit']:
             break
-        process_query(conversation_history, user_query)
+        bind_query_log(session_id="cli")
+        result = process_query(conversation_history, user_query)
+        route = (result or {}).get("category") or ""
+        record_query(user_query, route=route, session_id="cli")
 
 if __name__ == "__main__":
     main()

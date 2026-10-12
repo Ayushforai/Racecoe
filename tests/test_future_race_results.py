@@ -47,15 +47,15 @@ class TestFutureRaceResults(unittest.TestCase):
             )
         )
 
-    @patch("app._format_race_results_response")
+    @patch("app._resolve_race_results")
     @patch("app.resolve_race_results_year")
     def test_race_results_handler_returns_future_message(
         self,
         resolve_year,
-        format_results,
+        resolve_results,
     ):
         resolve_year.return_value = {"kind": "ok", "year": 2026}
-        format_results.return_value = RACE_NOT_HELD_RESULTS_MESSAGE
+        resolve_results.return_value = (RACE_NOT_HELD_RESULTS_MESSAGE, None)
         history: list[dict] = []
         handled = app._handle_race_results_query(
             history,
@@ -63,6 +63,7 @@ class TestFutureRaceResults(unittest.TestCase):
         )
         self.assertTrue(handled)
         self.assertEqual(history[-1]["answer"], RACE_NOT_HELD_RESULTS_MESSAGE)
+        resolve_results.assert_called_once()
 
     @patch("app.route_query", return_value="quantitative")
     @patch("app.extract_telemetry_params")
@@ -77,8 +78,8 @@ class TestFutureRaceResults(unittest.TestCase):
     ):
         history: list[dict] = []
         with patch(
-            "app._format_race_results_response",
-            return_value=RACE_NOT_HELD_RESULTS_MESSAGE,
+            "app._resolve_race_results",
+            return_value=(RACE_NOT_HELD_RESULTS_MESSAGE, None),
         ), patch(
             "app.resolve_race_results_year",
             return_value={"kind": "ok", "year": 2026},

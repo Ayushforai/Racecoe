@@ -64,9 +64,9 @@ VAGUE_PHRASES = (
 )
 
 # How many prior turns `main()` retains in memory.
-CONVERSATION_MEMORY_TURNS = 5
+CONVERSATION_MEMORY_TURNS = 9
 # How many of those turns are injected into router/extractor/generation prompts.
-ROUTER_CONTEXT_TURNS = 3
+ROUTER_CONTEXT_TURNS = 4
 MAX_ANSWER_CHARS_IN_PROMPT = 2500
 
 
