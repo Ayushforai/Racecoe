@@ -2,11 +2,11 @@
 
 ## Description
 
-Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It routes each question to the best data source: **live telemetry and lap data** (OpenF1), **structured historical CSVs** (Ergast-style race archive), or **RAG** over FIA regulation PDFs and historical race documents. A React web UI and FastAPI backend share the same Python pipeline as the CLI.
+Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It routes each question to the best data source: **live telemetry and lap data** (OpenF1), a **PostgreSQL race archive** (Ergast CSVs loaded into `f1.*`; pandas CSVs if no database), or **RAG** over FIA regulation PDFs and historical race documents. A React web UI and FastAPI backend share the same Python pipeline as the CLI.
 
 **Tagline:** Hybrid Formula 1 chatbot — live telemetry, race history, and FIA regulations.
 
-**Live site:** [https://racecoe.onrender.com](https://racecoe.onrender.com) (Docker on Render; Gemini + OpenF1 in production).
+**Live site:** [https://racecoe.onrender.com](https://racecoe.onrender.com) (Docker + PostgreSQL on Render; Gemini + OpenF1 in production).
 
 ---
 
@@ -43,12 +43,12 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 - **OpenF1 integration** — fastest lap, specific-lap lookups, and live telemetry when a session is actually live
 - **Session-aware fastest laps** — practice (FP1/FP2/FP3), qualifying, sprint, and race fastest-lap queries hit OpenF1 directly; “latest fp2 session” resolves via `session_key=latest` without needing a Grand Prix in the question (no LLM round-trip)
 - **Lap time formatting** — API responses use F1-style `M:SS.mmm` display
-- **Top-speed lookup** — highest speed-trap readings via OpenF1 (2021+) and fastest-lap speeds from CSV; handles all-time and GP-specific queries
+- **Top-speed lookup** — highest speed-trap readings via OpenF1 (2021+) and fastest-lap speeds from the archive; handles all-time and GP-specific queries
 - **OpenF1 timeouts** — HTTP calls use a 15s timeout so a stuck API cannot hang chat indefinitely
 
-### Historical data (CSV + RAG) 📃
-- **Full race classifications** — pre-2026 result queries use CSV directly: every finisher, DNFs, and fastest laps (not just the top 10)
-- **Driver-team lookups** — career questions like “Which team did Hamilton drive for in 2012?” resolve from `results.csv` (supports surname or full name, e.g. “Lance Stroll”)
+### Historical data (Postgres archive + RAG) 📃
+- **Full race classifications** — pre-2026 result queries use the archive (`f1.results` in Docker/Render, or CSVs without a DB): every finisher, DNFs, and fastest laps (not just the top 10)
+- **Driver-team lookups** — career questions like “Which team did Hamilton drive for in 2012?” resolve from archive results (supports surname or full name, e.g. “Lance Stroll”)
 - **Historical RAG** — FAISS search over processed race documents for broader historical questions
 - **Venue-aware matching** — country/circuit synonyms map correctly to the right Grand Prix
 
@@ -59,11 +59,11 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 - **Regulation year default** — yearless regulation queries default to the current season, with an option to ask about another year
 
 ### Conversation & display 🗨️
-- **Conversation memory** — last 5 turns stored with answers; follow-ups like “Who finished second?” or “and in 2023?” reuse prior context
-- **Fresh re-fetch** — when memory is insufficient or the user asks to verify, the bot re-queries CSV, API, or RAG
+- **Conversation memory** — last **9** turns stored with answers (`CONVERSATION_MEMORY_TURNS`); the LLM/router see the last **4** (`ROUTER_CONTEXT_TURNS`). Follow-ups like “Who finished second?” or “and in 2023?” reuse prior context
+- **Fresh re-fetch** — when memory is insufficient or the user asks to verify, the bot re-queries the archive, API, or RAG
 - **Currency display** — financial amounts shown in USD, INR, and GBP (penalties: USD + INR only), using live rates from the Frankfurter API with cached fallback
-- **Source citations** — every answer ends with where the data came from (CSV tables, OpenF1 API, regulation PDF chunk, historical vector doc, or prior turn)
-- **In-memory RAG cache** — embedding model weights and FAISS indexes stay loaded for the whole session; only RAG queries use the model, CSV/API queries do not
+- **Source citations** — every answer ends with where the data came from (Postgres/`f1.*` or CSV tables, OpenF1 API, regulation PDF chunk, historical vector doc, or prior turn)
+- **In-memory RAG cache** — embedding model weights and FAISS indexes stay loaded for the whole session; only RAG queries use the model, archive/API queries do not
 
 ---
 
@@ -81,12 +81,12 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 | You ask | What happens |
 |---------|----------------|
 | Cost cap / sporting / technical rules | Regulation RAG + optional year follow-up |
-| Full Monaco 2021 results | Archive classification (CSV or Postgres); optional Qualifying/Sprint follow-up |
+| Full Monaco 2021 results | Archive classification (`f1.*` / CSV fallback); optional Qualifying/Sprint follow-up |
 | Hamilton’s team in 2012 | Archive driver–team lookup |
 | Lap 12 at Monza 2024 for a driver | OpenF1 lap packet |
 | Fastest lap in latest **FP2** for Hamilton | OpenF1 session + laps (direct API path) |
 | Live telemetry for `#1` | OpenF1 only when a session is in the live window |
-| “Who finished second?” after a race answer | Conversation memory or fresh CSV re-fetch |
+| “Who finished second?” after a race answer | Conversation memory or fresh archive re-fetch |
 | Vague “tell me about F1” | Capabilities menu instead of a random guess |
 
 ### CLI 💻
@@ -104,9 +104,29 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 | **Node.js** | 18+ (frontend build / dev) |
 | **Local LLM** | Ollama + `qwen2.5:7b-instruct-q8_0` (optional if using Gemini locally) |
 | **Secrets** | `HF_TOKEN` (embeddings); `GEMINI_API_KEY` for cloud LLM |
-| **Data in repo** | Historical CSVs, FAISS indexes under `vector_store/`, FIA PDFs under `data/` |
+| **Docker** | Docker Desktop running (required for the default Postgres + app stack) |
+| **Data in repo** | Historical CSVs (loaded into Postgres on first Docker boot), FAISS indexes under `vector_store/`, FIA PDFs under `data/` |
 
-### Quick start (local)
+### Recommended: Docker (Postgres default)
+
+Docker Desktop must be **started** before this command. If the engine is down you will see `dockerDesktopLinuxEngine` / named-pipe errors.
+
+```bash
+cp .env.example .env                # GEMINI_API_KEY, HF_TOKEN
+docker compose up --build           # Postgres + app — http://127.0.0.1:8000
+```
+
+`docker compose up` always starts **Postgres and the app**. On first boot, `scripts/start_web.py` applies `db/schema.sql` and loads Ergast CSVs into `f1.*` if the archive is empty. Chat sessions go to `chat.*`. First boot can take 1–2 minutes; later starts skip the load.
+
+Deploy to **Render** with `render.yaml`; the Blueprint provisions `racecoe-db` and injects `DATABASE_URL`. Set `GEMINI_API_KEY` and `HF_TOKEN` in the dashboard. Smoke test:
+
+```bash
+python scripts/smoke_deploy.py --http --base-url https://YOUR-URL
+```
+
+### Without Docker (CSV fallback)
+
+`python server.py` with no `DATABASE_URL` uses pandas CSVs and in-memory sessions (same path as unit tests).
 
 ```bash
 python3 -m venv botenv
@@ -118,15 +138,13 @@ cp .env.example .env                # set HF_TOKEN=... and optionally LLM keys
 
 ollama pull qwen2.5:7b-instruct-q8_0   # local dev only
 
-# Indexes & data (if not already built)
 python pdf_processor.py
 python setup_historical_data.py
 python historical_processor.py
 python setup_driver_numbers.py
 
-# API + built UI
 cd frontend && npm install && npm run build && cd ..
-python server.py                    # http://127.0.0.1:5001
+python server.py                    # http://127.0.0.1:5001 — CSV archive
 ```
 
 **Frontend dev (hot reload):** `cd frontend && npm run dev` — proxies `/api` to port **5001**.
@@ -151,22 +169,7 @@ python scripts/load_ergast_to_postgres.py
 python server.py
 ```
 
-### Production-shaped run (Docker)
-
-```bash
-cp .env.example .env                # GEMINI_API_KEY, HF_TOKEN
-docker compose up --build           # Postgres + app — http://127.0.0.1:8000
-```
-
-First boot can take 1–2 minutes while CSVs load. Later starts skip the load.
-
-Deploy to **Render** with `render.yaml`; set secrets in the dashboard. Smoke test:
-
-```bash
-python scripts/smoke_deploy.py --http --base-url https://YOUR-URL
-```
-
-See [Models & deployment](#models--deployment-local-vs-production), [Setup (local)](#setup-local), and [RAG performance & deployment](#rag-performance--deployment) for env vars, warmup, and free-tier memory notes.
+See [PostgreSQL in Racecoe](#postgresql-in-racecoe), [Models & deployment](#models--deployment-local-vs-production), [Setup (local)](#setup-local), and [RAG performance & deployment](#rag-performance--deployment).
 
 ---
 
@@ -206,10 +209,10 @@ End-to-end flow for one user message:
 ```mermaid
 flowchart LR
   UI[React UI / CLI] --> API[FastAPI server.py]
-  API --> MEM[chat_store memory or Postgres]
+  API --> MEM[chat_store Postgres or memory]
   API --> PQ[process_query app.py]
   PQ --> R{Router + handlers}
-  R --> ARCH[historical_db CSV or Postgres]
+  R --> ARCH[historical_db Postgres or CSV]
   R --> OF1[OpenF1 API]
   R --> RAG[FAISS + embeddings]
   R --> LLM[Gemini / Ollama]
@@ -223,9 +226,9 @@ flowchart LR
 1. **Ingress** — `POST /api/chat` with `session_id` + message; per-session lock keeps history consistent; different users run in parallel.
 2. **Pre-routing** — Specialized handlers (race results, driver teams, session fastest lap, top speed, lap deltas, clarifications) run before generic LLM routing.
 3. **Routing** — LLM classifies intent (regulation category, historical, quantitative, ambiguous).
-4. **Retrieval** — Archive lookups (pandas CSV or PostgreSQL `f1.*`), OpenF1 HTTP, or hybrid regulation search (exact article + vector).
+4. **Retrieval** — Archive lookups (PostgreSQL `f1.*` by default in Docker/Render; pandas CSVs without a DB), OpenF1 HTTP, or hybrid regulation search (exact article + vector).
 5. **Generation** — LLM answers **only** from the context packet; citations appended from `utils/citations.py`.
-6. **Memory** — Last 5 turns stored per session (in-process dict or `chat.turns`); follow-ups can reuse answers or trigger re-fetch.
+6. **Memory** — Last **9** turns stored per session (`chat.turns` in Docker/Render; in-process dict without a DB). Prompts receive the last **4** turns; follow-ups can reuse answers or trigger re-fetch.
 
 **Boot:** optional embedding warmup (`initialize_pipeline` / `F1_SKIP_WARMUP` on small hosts).
 
@@ -235,10 +238,10 @@ flowchart LR
 
 Building Racecoe surfaced practical lessons beyond “call an LLM”:
 
-- **Hybrid beats pure RAG** for F1 — structured CSV and OpenF1 give exact grids and lap times; RAG is for regulations and fuzzy history. Wrong routing was as harmful as wrong retrieval (see `ISSUES.md` I01–I07).
+- **Hybrid beats pure RAG** for F1 — structured archive SQL (or CSVs) and OpenF1 give exact grids and lap times; RAG is for regulations and fuzzy history. Wrong routing was as harmful as wrong retrieval (see `ISSUES.md` I01–I07).
 - **Clarify before defaulting** — silent defaults (year 2026, driver #44) produced confident wrong answers; explicit prompts improved trust more than smarter prompts alone.
 - **Live vs archive** — OpenF1’s live window is narrow; pretending archive car data is “live” fails user expectations (I03).
-- **Memory needs the answer, not just the category** — follow-ups only work when prior **answers** are in context or re-fetched from CSV/API.
+- **Memory needs the answer, not just the category** — follow-ups only work when prior **answers** are in context or re-fetched from the archive/API.
 - **Deploy constraints shape architecture** — 512MB Render forced lazy embedding load, CPU torch, and skip-warmup; concurrency needed per-session locks, not one global chat mutex.
 - **Evaluation without RAGAS** — issue IDs + 235 unit tests + deploy smoke caught regressions better than a single accuracy score for this scope.
 
@@ -250,8 +253,8 @@ Planned and natural extensions:
 
 | Area | Direction |
 |------|-----------|
-| **Teams & grids** | Full constructor line-ups per season (drivers, numbers, team principals) from CSV + OpenF1, not only single driver–team lookups |
-| **Standings & points** | Championship tables, sprint points, and race-by-race progression from existing CSV + API fields |
+| **Teams & grids** | Full constructor line-ups per season (drivers, numbers, team principals) from the archive + OpenF1, not only single driver–team lookups |
+| **Standings & points** | Championship tables, sprint points, and race-by-race progression from existing archive + API fields |
 | **UI** | Streaming answers, richer session picker (FP1/FP2/Quali/Race), standings pages wired to real data (nav placeholders today) |
 | **Backend** | Redis for locks/rate-limits; optional external embedding API to drop in-process torch |
 | **RAG** | Close **B02** (empty chunks); stronger held-out eval (RAGAS/faithfulness) when the backlog allows |
@@ -267,7 +270,7 @@ Planned and natural extensions:
 - Clearer loading states when Gemini or OpenF1 is slow (timeouts already prevent infinite spinners on API).
 
 **Quality**
-- Reduce **LLM calls per turn** (keyword fast-path routing for obvious CSV/OpenF1 queries).
+- Reduce **LLM calls per turn** (keyword fast-path routing for obvious archive/OpenF1 queries).
 - Fix remaining **B02** RAG edge case; add periodic RAGAS sampling on regulation Q&A.
 - Expand **multi-language** or **voice** only if scope grows — not required for core F1 data accuracy.
 
@@ -295,7 +298,7 @@ One codebase supports both via `utils/llm.py` (`LLM_PROVIDER` + optional `LLM_MO
 
 `gemini-3.8-flash` is the newest Flash workhorse and is available on the Gemini API free tier (rate-limited). Racecoe defaults to it for deploy. Older IDs like `gemini-3.6-flash` still work via `LLM_MODEL`.
 
-**Gemini overload (503):** On the free Flash API, Google may return `503 UNAVAILABLE` with *“This model is currently experiencing high demand”*. That is an **LLM provider** failure — CSV/RAG context can be fine while chat still fails. Racecoe retries with backoff and falls back across models (`gemini-3.6-flash`, then `gemini-2.0-flash`) via `utils/llm.py` / `GEMINI_FALLBACK_MODELS`.
+**Gemini overload (503):** On the free Flash API, Google may return `503 UNAVAILABLE` with *“This model is currently experiencing high demand”*. That is an **LLM provider** failure — archive/RAG context can be fine while chat still fails. Racecoe retries with backoff and falls back across models (`gemini-3.6-flash`, then `gemini-2.0-flash`) via `utils/llm.py` / `GEMINI_FALLBACK_MODELS`.
 
 ### Google One Plus vs Gemini API
 
@@ -348,7 +351,7 @@ Embeddings stay on **Hugging Face** (`BAAI/bge-base-en-v1.5`) in both environmen
    HF_TOKEN=...
    ```
 4. Build FAISS indexes locally if needed (`pdf_processor.py`, `historical_processor.py`)  
-5. Run locally in production shape:
+5. Run locally in production shape (Postgres + app; Docker Desktop must be running):
    ```bash
    docker compose up --build
    # open http://127.0.0.1:8000 — check /api/health
@@ -412,7 +415,7 @@ Run `python app.py` from an integrated **Terminal** tab (not the Debug Console) 
 ```bash
 source botenv/bin/activate
 python server.py
-# open http://127.0.0.1:5001
+# open http://127.0.0.1:5001  (CSV fallback unless DATABASE_URL is set)
 ```
 
 For frontend hot-reload during UI work:
@@ -438,9 +441,9 @@ Example queries: 🗣️
 | `What is the cost cap for 2026?` | Financial regulations (RAG) |
 | `What was Verstappen's lap 12 time at Monza 2024?` | OpenF1 lap lookup |
 | `What was Hamilton's fastest lap in the latest FP2 session?` | OpenF1 latest practice session (direct API) |
-| `Results of Monaco GP 2021` | CSV full classification |
-| `Which team did Hamilton drive for in 2012?` | CSV driver-team lookup |
-| `Time delta between Bottas and Stroll on lap 32 of Azerbaijan GP 2017?` | CSV lap-time delta |
+| `Results of Monaco GP 2021` | Archive full classification (`f1.*` / CSV) |
+| `Which team did Hamilton drive for in 2012?` | Archive driver-team lookup |
+| `Time delta between Bottas and Stroll on lap 32 of Azerbaijan GP 2017?` | Archive lap-time delta |
 | `Which GP in Italy?` → `Monza` | Venue clarification, then lookup |
 | `Who finished second?` | Follow-up from conversation memory |
 | `and in 2023?` (after a driver-team answer) | Follow-up with new season |
@@ -451,7 +454,7 @@ Racecoe supports **2–3 simultaneous users** on a single server instance: conve
 
 ### Session isolation
 
-Each browser gets its own `session_id` (UUID in `localStorage`; see `frontend/src/api.js`). The API stores conversation history in an in-memory map keyed by that ID (`server.py` → `_sessions`). User A’s follow-ups never read User B’s history.
+Each browser gets its own `session_id` (UUID in `localStorage`; see `frontend/src/api.js`). History is stored per ID in Postgres `chat.*` when `SESSION_STORE=postgres` (Docker/Render), otherwise in an in-memory map (`chat_store.py`). User A’s follow-ups never read User B’s history.
 
 Health, calendar, and static assets can be served while chat requests are in flight.
 
@@ -461,18 +464,18 @@ Chat uses **one lock per `session_id`**, not one lock for the whole server:
 
 ```python
 # server.py — simplified
-with _session_lock(session_id):
-    history = _sessions.setdefault(session_id, [])
+with session_lock(session_id):
+    history = load_history(session_id)
     return process_query(history, message)
 ```
 
 | Users chatting at once | Behaviour |
 |------------------------|-----------|
-| **Different sessions** | Run **in parallel** (Gemini/OpenF1 I/O overlaps; CSV paths are fast) |
+| **Different sessions** | Run **in parallel** (Gemini/OpenF1 I/O overlaps; archive lookups are fast) |
 | **Same session** (double-submit, two tabs sharing `localStorage`) | **Serialized** so conversation history stays consistent |
-| **Many / public traffic** | Still limited by Gemini rate limits, RAM, and in-memory sessions |
+| **Many / public traffic** | Limited by Gemini rate limits and RAM; session rows persist in Postgres |
 
-RAG vector search serializes only the **embedding encode** step (`utils/embeddings.py` → `embedding_inference()`), not the full pipeline — so two users on CSV/OpenF1 queries stay fully parallel; two RAG queries share the model safely with a brief encode queue.
+RAG vector search serializes only the **embedding encode** step (`utils/embeddings.py` → `embedding_inference()`), not the full pipeline — so two users on archive/OpenF1 queries stay fully parallel; two RAG queries share the model safely with a brief encode queue.
 
 Regression coverage: `tests/test_concurrent_sessions.py` (isolation, cross-session parallelism, same-session serialization).
 
@@ -490,11 +493,11 @@ On **Render free (512MB)**, two simultaneous RAG questions are the riskiest case
 
 | Limit | Detail |
 |-------|--------|
-| **In-memory sessions** | History is lost on process restart; not shared across multiple containers |
-| **No session expiry** | Idle sessions stay in RAM until `/api/reset` or restart |
+| **Sessions** | Postgres `chat.*` in Docker/Render (survives restarts, shared across workers using the same DB). In-memory only when `DATABASE_URL` is unset |
+| **No session expiry** | Idle rows stay until `/api/reset` (SQL) or process restart (memory fallback) |
 | **`POST /api/reset` without `session_id`** | Clears **every** stored session (frontend always sends its own ID) |
 | **Single uvicorn worker** | `Dockerfile` runs one process — expected for this app |
-| **Shared read-only caches** | CSV tables, FAISS indexes, and the embedding model are loaded once and shared safely across readers |
+| **Shared read-only caches** | Archive tables (SQL or CSV), FAISS indexes, and the embedding model are loaded once and shared safely across readers |
 | **Gemini rate limits** | More concurrent users → higher chance of **429/503** from the LLM API (see Evaluation) |
 
 ### Suitability
@@ -502,7 +505,7 @@ On **Render free (512MB)**, two simultaneous RAG questions are the riskiest case
 | Scenario | OK? |
 |----------|-----|
 | Demo, portfolio site, a few friends at once | **Yes** — isolated sessions, parallel turns across users |
-| High-traffic public chat | **No** — needs external session store, rate limiting, and more RAM |
+| High-traffic public chat | **No** — sessions persist in Postgres, but Gemini rate limits and RAM still cap scale |
 
 ## Evaluation
 
@@ -540,7 +543,7 @@ Representative regressions that now have dedicated tests (named after issue IDs)
 
 | Suite | Scope | Count (current) | How to run |
 |-------|--------|-----------------|------------|
-| Python unit tests | Router, CSV/RAG paths, venues, API wrapper, Gemini client, regulations, follow-ups, concurrent sessions, session fastest lap | **235** cases in `tests/` | `PYTHONPATH=. python -m unittest discover -s tests -v` |
+| Python unit tests | Router, archive/RAG paths, venues, API wrapper, Gemini client, regulations, follow-ups, concurrent sessions, Postgres dispatch | **235+** cases in `tests/` | `PYTHONPATH=. python -m unittest discover -s tests -v` |
 | Frontend formatting | Answer markdown / race list rendering | **4** cases | `cd frontend && node --test src/formatAnswer.test.js` |
 | In-process deploy smoke | Monaco 2021 → “who was third?” stickiness + `/api/health` | **2** assertions | `PYTHONPATH=. python scripts/smoke_deploy.py` |
 | HTTP / production smoke | Same follow-up against a running server | Live gate | `python scripts/smoke_deploy.py --http --base-url URL` |
@@ -621,9 +624,11 @@ utils/
   driver_numbers.py     # Driver name → car number resolution
   f1_api.py             # OpenF1 API client + lap time formatting
   db.py                 # DATABASE_URL, schema apply, backend flags
-  historical_db.py      # Archive lookups (CSV or Postgres)
+  historical_db.py      # Archive lookups (Postgres default in Docker; CSV fallback)
   historical_pg.py      # SQL implementations of the same packets
   chat_store.py         # Session history (memory or Postgres)
+  query_log.py          # Write-only question log (session_id / optional user_id)
+  result_cache.py       # Structured archive/OpenF1 packet cache
   venues.py             # Circuit/country resolution + multi-GP clarification
   currency.py           # Live FX rates + multi-currency display
   citations.py          # Source footer formatting for answers
@@ -719,11 +724,11 @@ The weights stay loaded for all query types, but **only RAG paths actually run t
 |------------|------------------|
 | Regulation RAG (general, sporting, technical, financial, operational) | Yes |
 | Historical RAG | Yes |
-| CSV lookups (race results, driver teams, country GP lists, lap deltas) | No |
+| Archive lookups (race results, driver teams, country GP lists, lap deltas) | No |
 | OpenF1 (laps, telemetry, speed trap) | No |
 | Conversation-memory follow-ups | No |
 
-So CSV and API answers stay fast even though the model remains resident in memory.
+So archive and API answers stay fast even though the model remains resident in memory.
 
 ### Optional index preload
 

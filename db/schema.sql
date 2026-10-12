@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS chat.turns (
 CREATE INDEX IF NOT EXISTS idx_turns_session_recent ON chat.turns (session_id, turn_index DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_last_active ON chat.sessions (last_active_at);
 
--- ---------- rag: regulation / historical docs (vectors optional; see schema_pgvector.sql) ----------
+-- ---------- rag: regulation / historical docs (vectors optional, see schema_pgvector.sql) ----------
 CREATE TABLE IF NOT EXISTS rag.index_runs (
     index_run_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category        TEXT NOT NULL,
@@ -282,3 +282,27 @@ CREATE TABLE IF NOT EXISTS app.venue_map (
     race_id      INTEGER REFERENCES f1.races(race_id),
     notes        TEXT
 );
+
+-- Write-only question log. Never used as answer context or RAG.
+CREATE TABLE IF NOT EXISTS app.query_log (
+    log_id       BIGSERIAL PRIMARY KEY,
+    session_id   TEXT,
+    user_id      TEXT,
+    query        TEXT NOT NULL,
+    route        TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_log_created ON app.query_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_query_log_session ON app.query_log (session_id);
+
+-- Structured lookup cache (archive / OpenF1 packets). Not LLM prose.
+CREATE TABLE IF NOT EXISTS app.result_cache (
+    cache_key    TEXT PRIMARY KEY,
+    kind         TEXT NOT NULL,
+    payload      JSONB NOT NULL,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_result_cache_expires ON app.result_cache (expires_at);

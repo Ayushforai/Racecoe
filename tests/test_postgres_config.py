@@ -18,6 +18,26 @@ class TestPostgresConfig(unittest.TestCase):
         self.assertEqual(len(stmts), 2)
         self.assertIn("CREATE SCHEMA f1", stmts[0])
 
+    def test_comment_semicolon_is_not_executed(self):
+        sql = (
+            "CREATE SCHEMA rag;\n"
+            "-- docs (vectors optional; see schema_pgvector.sql) ----------\n"
+            "CREATE TABLE rag.t (id int);\n"
+        )
+        stmts = _statements(sql)
+        self.assertEqual(len(stmts), 2)
+        self.assertTrue(all(s.upper().startswith("CREATE") for s in stmts))
+
+    def test_repo_schema_sql_has_no_junk_chunks(self):
+        from pathlib import Path
+
+        text = (Path(__file__).resolve().parent.parent / "db" / "schema.sql").read_text(
+            encoding="utf-8"
+        )
+        stmts = _statements(text)
+        self.assertGreater(len(stmts), 10)
+        self.assertFalse(any(s.lower().startswith("see ") for s in stmts))
+
     def test_normalize_heroku_style_url(self):
         self.assertEqual(
             normalize_database_url("postgres://user:pass@host/db"),

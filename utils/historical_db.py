@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 from utils.db import historical_backend, uses_postgres_historical
+from utils.result_cache import cached
 from utils.venues import csv_race_keywords, MULTI_GP_COUNTRIES, multi_gp_clarification
 
 DATA_DIR = "./data/historical_csvs"
@@ -105,6 +106,7 @@ def _races_for_venue(year: int, country: str, location: str | None = None) -> pd
     return races_yr[races_yr["name"].str.contains(pattern, case=False, na=False)]
 
 
+@cached("race_results", "year", "country", "top_n", "location")
 def get_race_results(year: int, country: str, top_n: int | None = None, location: str | None = None) -> dict | str:
     """Return the full race classification, including DNFs and each driver's fastest lap."""
     if uses_postgres_historical():
@@ -239,6 +241,7 @@ def _session_results_common(
         return f"Historical Database Error: {str(e)}"
 
 
+@cached("qualifying_results", "year", "country", "location")
 def get_qualifying_results(
     year: int,
     country: str,
@@ -288,6 +291,7 @@ def get_qualifying_results(
         return f"Historical Database Error: {str(e)}"
 
 
+@cached("sprint_results", "year", "country", "location")
 def get_sprint_results(
     year: int,
     country: str,
@@ -611,6 +615,7 @@ def _driver_lap_row(race_id: int, driver_id: int, lap_number: int) -> pd.Series 
     return rows.iloc[0]
 
 
+@cached("lap_time_delta", "year", "country", "driver_a", "driver_b", "lap_number", "location")
 def get_lap_time_delta(
     year: int,
     country: str,
@@ -713,6 +718,7 @@ def format_lap_time_delta(packet: dict) -> str:
     return "\n".join(lines)
 
 
+@cached("max_fastest_lap_speed", "year", "country", "location", "driver_ref", "year_start", "year_end")
 def get_max_fastest_lap_speed(
     year: int | None = None,
     country: str | None = None,
@@ -855,6 +861,7 @@ def format_top_speed_lookup(
     return "\n".join(lines)
 
 
+@cached("grand_prix_by_country", "country")
 def get_grand_prix_by_country(country: str) -> list[dict] | str:
     """Return Grand Prix events held in a country from races.csv + circuits.csv."""
     if uses_postgres_historical():
@@ -930,6 +937,7 @@ def format_country_grand_prix_listing_answer(query: str, countries: list[str]) -
     return "\n\n".join(sections)
 
 
+@cached("driver_teams", "year", "driver_ref")
 def get_driver_teams(year: int, driver_ref: str) -> dict | str:
     """Return the team(s) a driver raced for in a given season."""
     if uses_postgres_historical():

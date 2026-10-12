@@ -5,16 +5,16 @@ from utils.router import CONVERSATION_MEMORY_TURNS, ROUTER_CONTEXT_TURNS, _forma
 
 
 class TestI06ConversationMemory(unittest.TestCase):
-    def test_memory_keeps_last_five_turns(self):
+    def test_memory_keeps_last_nine_turns(self):
         history = []
-        for i in range(7):
+        for i in range(11):
             app._save_conversation_turn(
                 history,
                 app._make_turn(f"query {i}", "historical", f"answer {i}"),
             )
         self.assertEqual(len(history), CONVERSATION_MEMORY_TURNS)
         self.assertEqual(history[0]["query"], "query 2")
-        self.assertEqual(history[-1]["query"], "query 6")
+        self.assertEqual(history[-1]["query"], "query 10")
 
     def test_format_history_includes_answers(self):
         history = [
@@ -29,13 +29,15 @@ class TestI06ConversationMemory(unittest.TestCase):
         self.assertIn("Assistant: 1. Max Verstappen", text)
 
     def test_format_history_uses_router_context_window(self):
+        extra = 2
+        n = ROUTER_CONTEXT_TURNS + extra
         history = [
             {"query": f"q{i}", "category": "historical", "answer": f"a{i}"}
-            for i in range(5)
+            for i in range(n)
         ]
         text = _format_history(history)
         self.assertNotIn("User: q0", text)
-        self.assertIn("User: q2", text)
+        self.assertIn(f"User: q{extra}", text)
         self.assertEqual(text.count("Assistant:"), ROUTER_CONTEXT_TURNS)
 
     def test_follow_up_detection(self):
