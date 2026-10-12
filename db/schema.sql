@@ -92,9 +92,11 @@ CREATE TABLE IF NOT EXISTS f1.results (
     fastest_lap_rank   INTEGER,
     fastest_lap_time   TEXT,
     fastest_lap_speed  NUMERIC(10,3),
-    status_id          INTEGER NOT NULL REFERENCES f1.status(status_id),
-    UNIQUE (race_id, driver_id)
+    status_id          INTEGER NOT NULL REFERENCES f1.status(status_id)
 );
+
+-- Ergast shared drives: one driver can have two result rows in one race.
+ALTER TABLE f1.results DROP CONSTRAINT IF EXISTS results_race_id_driver_id_key;
 
 CREATE TABLE IF NOT EXISTS f1.qualifying (
     qualify_id       INTEGER PRIMARY KEY,

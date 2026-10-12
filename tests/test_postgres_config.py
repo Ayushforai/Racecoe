@@ -37,6 +37,9 @@ class TestPostgresConfig(unittest.TestCase):
         stmts = _statements(text)
         self.assertGreater(len(stmts), 10)
         self.assertFalse(any(s.lower().startswith("see ") for s in stmts))
+        self.assertTrue(
+            any("DROP CONSTRAINT IF EXISTS results_race_id_driver_id_key" in s for s in stmts)
+        )
 
     def test_normalize_heroku_style_url(self):
         self.assertEqual(
