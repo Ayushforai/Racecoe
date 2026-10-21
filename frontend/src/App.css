@@ -188,12 +188,7 @@
 /* Top navigation */
 .top-nav {
   height: var(--nav-height);
-  background:
-    repeating-linear-gradient(
-      -45deg,
-      #1a1a1f 0 2px,
-      #111116 2px 5px
-    );
+  background: var(--carbon-stripe);
   border-bottom: 1px solid #2b2b32;
   display: flex;
   align-items: center;
@@ -323,7 +318,8 @@
 
 /* Race status bar */
 .race-bar {
-  height: var(--race-height);
+  min-height: var(--race-height);
+  height: auto;
   background: #0a0a0d;
   border-bottom: 1px solid #1c1c22;
   display: flex;
@@ -450,7 +446,9 @@
 .clock-block {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px 14px;
   color: var(--f1-silver);
 }
 
@@ -537,34 +535,27 @@
   object-fit: contain;
 }
 
-.tabs {
-  display: flex;
-  gap: 28px;
-  margin-top: 10px;
-  border-bottom: 1px solid #2a2a33;
+.page-toolbar {
+  flex-shrink: 0;
+  padding-top: 12px;
+  padding-bottom: 4px;
 }
 
-.tabs button {
+.back-to-chat {
   background: none;
   border: 0;
-  color: var(--f1-muted);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  padding: 10px 0 12px;
-  border-bottom: 4px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-.tabs button.active {
   color: #fff;
-  border-bottom-color: var(--f1-red);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 0;
+  transition: color 0.2s ease, transform 0.2s ease;
 }
 
-.tabs button:hover {
+.back-to-chat:hover {
   color: var(--f1-red);
+  transform: translateX(-2px);
 }
 
 /* Chat */
@@ -1316,11 +1307,6 @@
     max-height: 52px;
   }
 
-  .app-tab-chat .tabs {
-    margin-top: 10px;
-    gap: 20px;
-  }
-
   .chat-shell {
     padding: 12px 0 8px;
   }
@@ -1407,23 +1393,6 @@
     max-height: clamp(44px, 12vw, 72px);
   }
 
-  .tabs {
-    gap: 16px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tabs button {
-    flex: 0 0 auto;
-    font-size: 12px;
-    letter-spacing: 0.12em;
-  }
-
   .site-footer {
     padding: 10px 14px calc(10px + var(--safe-bottom));
     gap: 8px;
@@ -1481,8 +1450,8 @@
   justify-content: center;
   gap: 10px;
   padding: 18px 22px;
-  border-top: 1px solid #2a2a33;
-  background: #0a0a0d;
+  border-top: 1px solid #2b2b32;
+  background: var(--carbon-stripe);
   text-align: center;
 }
 

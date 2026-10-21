@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchCalendarWithFallback } from "../api.js";
-import { formatWeekend, nextRoundIndex } from "../calendarUi.js";
+import { formatClock, formatWeekend, nextRoundIndex, trackTimeZone } from "../calendarUi.js";
 import { CountryFlag } from "../flags.jsx";
 import rcLogo from "../assets/rc-logo.png";
 import racecoeLogo from "../assets/racecoe-logo.png";
@@ -38,7 +38,7 @@ export default function TopNav({ tab, onTab, onReset }) {
             className={`nav-link ${tab === "chat" ? "active" : ""}`}
             onClick={() => onTab("chat")}
           >
-            Pit Wall
+            Chat
           </button>
           <button
             className={`nav-link ${tab === "about" ? "active" : ""}`}
@@ -85,7 +85,7 @@ export default function TopNav({ tab, onTab, onReset }) {
             onTab("chat");
           }}
         >
-          Pit Wall
+          Chat
         </button>
         <button
           onClick={() => {
@@ -98,14 +98,6 @@ export default function TopNav({ tab, onTab, onReset }) {
       </div>
     </>
   );
-}
-
-function formatClock(date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
 }
 
 export function RaceBar({ onOpenSchedule, onSeasonYear }) {
@@ -143,6 +135,8 @@ export function RaceBar({ onOpenSchedule, onSeasonYear }) {
   }
 
   const race = races[index];
+  const zone = trackTimeZone(race);
+  const trackClock = zone ? formatClock(now, zone) : "";
 
   return (
     <div className="race-bar">
@@ -189,6 +183,11 @@ export function RaceBar({ onOpenSchedule, onSeasonYear }) {
           <span>
             Local time <b>{formatClock(now)}</b>
           </span>
+          {trackClock ? (
+            <span>
+              Track time <b>{trackClock}</b>
+            </span>
+          ) : null}
           <span className="clock-icon" aria-hidden="true" />
         </div>
       </div>
@@ -196,21 +195,13 @@ export function RaceBar({ onOpenSchedule, onSeasonYear }) {
   );
 }
 
-export function Hero({ tab, onTab, year }) {
+export function Hero() {
   return (
     <section className="hero page-pad">
       <div className="speed-lines" />
       <h1>
         <img className="hero-logo" src={racecoeLogo} alt="Racecoe" />
       </h1>
-      <div className="tabs">
-        <button className={tab === "chat" ? "active" : ""} onClick={() => onTab("chat")}>
-          Chat
-        </button>
-        <button className={tab === "schedule" ? "active" : ""} onClick={() => onTab("schedule")}>
-          Schedule
-        </button>
-      </div>
     </section>
   );
 }

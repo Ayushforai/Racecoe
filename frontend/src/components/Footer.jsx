@@ -21,6 +21,18 @@ function GitHubIcon() {
   );
 }
 
+function XIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect width="24" height="24" rx="4" fill="#000" />
+      <path
+        fill="#fff"
+        d="M13.5 10.7 19.2 4h-1.4l-4.9 5.8L8.9 4H4.2l6 8.9L4.2 20h1.4l5.3-6.2 4.2 6.2h4.7l-6.3-9.3zm-1.9 2.2-.6-.9-4.9-7h2.1l4 5.8.6.9 5.1 7.3h-2.1l-4.2-6.1z"
+      />
+    </svg>
+  );
+}
+
 function GmailIcon() {
   return (
     <svg viewBox="52 42 88 66" aria-hidden="true">
@@ -43,6 +55,11 @@ const LINKS = [
     label: "GitHub",
     href: "https://github.com/Ayushforai",
     Icon: GitHubIcon,
+  },
+  {
+    label: "X",
+    href: "https://x.com/Ayushfor_ai",
+    Icon: XIcon,
   },
   {
     label: "Gmail",

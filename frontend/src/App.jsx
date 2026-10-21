@@ -39,7 +39,13 @@ export default function App() {
       <TopNav tab={tab} onTab={setTab} onReset={handleReset} />
       <RaceBar onOpenSchedule={() => setTab("schedule")} onSeasonYear={setSeasonYear} />
       <div className="main-stage">
-        <Hero tab={tab} onTab={setTab} year={seasonYear} />
+        {tab === "chat" ? <Hero /> : (
+          <div className="page-toolbar page-pad">
+            <button type="button" className="back-to-chat" onClick={() => setTab("chat")}>
+              ← Chat
+            </button>
+          </div>
+        )}
         {tab === "chat" ? (
           <div className="stage-panel" key={`chat-${chatKey}`}>
             <Chat

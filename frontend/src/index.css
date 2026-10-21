@@ -80,6 +80,11 @@
   --font-chat: "Century Gothic", "Segoe UI", sans-serif;
   --font-display: "Century Gothic", "Segoe UI", sans-serif;
   --font-header: "Century Gothic", "Segoe UI", sans-serif;
+  --carbon-stripe: repeating-linear-gradient(
+    -45deg,
+    #1a1a1f 0 2px,
+    #111116 2px 5px
+  );
   --under-shadow:
     12px 16px 18px -5px rgba(225, 6, 0, 0.62),
     22px 30px 36px -8px rgba(255, 70, 50, 0.24);

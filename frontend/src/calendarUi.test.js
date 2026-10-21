@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nextRoundIndex } from "./calendarUi.js";
+import { nextRoundIndex, trackTimeZone } from "./calendarUi.js";
 
 const races = [
   {
@@ -29,4 +29,10 @@ test("keeps Italy on main race day", () => {
 
 test("switches to Spain the day after Italy's race", () => {
   assert.equal(nextRoundIndex(races, new Date("2026-09-07T09:00:00")), 1);
+});
+
+test("resolves track timezone from venue fields", () => {
+  assert.equal(trackTimeZone({ country: "Bahrain", location: "Sakhir" }), "Asia/Bahrain");
+  assert.equal(trackTimeZone({ name: "Las Vegas Grand Prix" }), "America/Los_Angeles");
+  assert.equal(trackTimeZone({ circuit: "Autodromo Nazionale di Monza", country: "Italy" }), "Europe/Rome");
 });
