@@ -39,22 +39,27 @@ export function trackTimeZone(race) {
   return match ? match[1] : "";
 }
 
+function twoDigit(value) {
+  return String(value).padStart(2, "0");
+}
+
 export function formatClock(date, timeZone) {
-  const options = {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  };
-  if (timeZone) options.timeZone = timeZone;
-  try {
-    return new Intl.DateTimeFormat("en-GB", options).format(date);
-  } catch {
-    return new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZone,
+      }).formatToParts(date);
+      const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+      const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+      return `${twoDigit(hour)}:${twoDigit(minute)}`;
+    } catch {
+      /* use the viewer's local clock */
+    }
   }
+  return `${twoDigit(date.getHours())}:${twoDigit(date.getMinutes())}`;
 }
 
 export function parseIsoDate(iso) {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nextRoundIndex, trackTimeZone } from "./calendarUi.js";
+import { formatClock, nextRoundIndex, trackTimeZone } from "./calendarUi.js";
 
 const races = [
   {
@@ -35,4 +35,11 @@ test("resolves track timezone from venue fields", () => {
   assert.equal(trackTimeZone({ country: "Bahrain", location: "Sakhir" }), "Asia/Bahrain");
   assert.equal(trackTimeZone({ name: "Las Vegas Grand Prix" }), "America/Los_Angeles");
   assert.equal(trackTimeZone({ circuit: "Autodromo Nazionale di Monza", country: "Italy" }), "Europe/Rome");
+});
+
+test("formats local clock in 24-hour HH:mm", () => {
+  const afternoon = new Date(2026, 9, 22, 15, 5, 0);
+  assert.equal(formatClock(afternoon), "15:05");
+  const midnight = new Date(2026, 9, 22, 0, 7, 0);
+  assert.equal(formatClock(midnight), "00:07");
 });
