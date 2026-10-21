@@ -2,16 +2,19 @@ import pandas as pd
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
-from utils.db import historical_backend, uses_postgres_historical
+from utils.db import database_url, historical_backend, uses_postgres_historical
 from utils.result_cache import cached
 from utils.venues import csv_race_keywords, MULTI_GP_COUNTRIES, multi_gp_clarification
 
-DATA_DIR = "./data/historical_csvs"
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "data" / "historical_csvs"
 
 CSV_UNAVAILABLE_MESSAGE = (
     "Historical CSV database is not available. "
-    "Run: python setup_historical_data.py"
+    "The server will try to download it automatically on startup when Kaggle credentials "
+    "are configured; otherwise run: python setup_historical_data.py"
 )
 
 # Load ALL the CSVs into memory when the app starts
@@ -25,22 +28,56 @@ lap_times_df = None
 qualifying_df = None
 sprint_results_df = None
 driver_standings_df = None
+_csv_load_attempted = False
 
-# Skip RAM-heavy CSV load when the process is explicitly Postgres-only.
-if historical_backend() != "postgres":
+def _skip_csv_load_at_import() -> bool:
+    """Skip in-memory CSV when Postgres is the active historical archive."""
+    mode = historical_backend()
+    if mode == "csv":
+        return False
+    if mode == "postgres":
+        return bool(database_url())
+    return uses_postgres_historical()
+
+
+def _load_historical_csvs() -> bool:
+    """Load Ergast CSVs from the repo data directory (cwd-independent)."""
+    global races_df, circuits_df, drivers_df, constructors_df, results_df
+    global status_df, lap_times_df, qualifying_df, sprint_results_df, driver_standings_df
+    global _csv_load_attempted
+    _csv_load_attempted = True
+    from utils.historical_archive import ensure_historical_csvs
+
+    ensure_historical_csvs(DATA_DIR)
     try:
-        races_df = pd.read_csv(os.path.join(DATA_DIR, "races.csv"))
-        circuits_df = pd.read_csv(os.path.join(DATA_DIR, "circuits.csv"))
-        drivers_df = pd.read_csv(os.path.join(DATA_DIR, "drivers.csv"))
-        constructors_df = pd.read_csv(os.path.join(DATA_DIR, "constructors.csv"))
-        results_df = pd.read_csv(os.path.join(DATA_DIR, "results.csv"))
-        status_df = pd.read_csv(os.path.join(DATA_DIR, "status.csv"))
-        lap_times_df = pd.read_csv(os.path.join(DATA_DIR, "lap_times.csv"))
-        qualifying_df = pd.read_csv(os.path.join(DATA_DIR, "qualifying.csv"))
-        sprint_results_df = pd.read_csv(os.path.join(DATA_DIR, "sprint_results.csv"))
-        driver_standings_df = pd.read_csv(os.path.join(DATA_DIR, "driver_standings.csv"))
+        races_df = pd.read_csv(DATA_DIR / "races.csv")
+        circuits_df = pd.read_csv(DATA_DIR / "circuits.csv")
+        drivers_df = pd.read_csv(DATA_DIR / "drivers.csv")
+        constructors_df = pd.read_csv(DATA_DIR / "constructors.csv")
+        results_df = pd.read_csv(DATA_DIR / "results.csv")
+        status_df = pd.read_csv(DATA_DIR / "status.csv")
+        lap_times_df = pd.read_csv(DATA_DIR / "lap_times.csv")
+        qualifying_df = pd.read_csv(DATA_DIR / "qualifying.csv")
+        sprint_results_df = pd.read_csv(DATA_DIR / "sprint_results.csv")
+        driver_standings_df = pd.read_csv(DATA_DIR / "driver_standings.csv")
+        return True
     except FileNotFoundError:
         print(f"Warning: {CSV_UNAVAILABLE_MESSAGE}")
+        return False
+
+
+if not _skip_csv_load_at_import():
+    _load_historical_csvs()
+
+
+def reload_historical_csvs_if_needed() -> None:
+    """Retry CSV bootstrap/load when the archive was missing at import time."""
+    if uses_postgres_historical() or csv_available():
+        return
+    global _csv_load_attempted
+    _csv_load_attempted = False
+    if not _skip_csv_load_at_import():
+        _load_historical_csvs()
 
 
 def csv_available() -> bool:
@@ -63,9 +100,13 @@ def csv_available() -> bool:
 
 
 def _require_csv() -> str | None:
+    if not csv_available() and not _skip_csv_load_at_import() and not _csv_load_attempted:
+        _load_historical_csvs()
     if csv_available():
         return None
-    if uses_postgres_historical() or historical_backend() == "postgres":
+    if uses_postgres_historical() or (
+        historical_backend() == "postgres" and database_url()
+    ):
         return (
             "Historical PostgreSQL archive is not available. "
             "Run: python scripts/load_ergast_to_postgres.py"

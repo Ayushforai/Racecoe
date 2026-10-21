@@ -15,7 +15,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+ROOT = Path(__file__).resolve().parent
+os.chdir(ROOT)
+load_dotenv(ROOT / ".env")
+
+from utils.runtime_boot import configure_data_backend
+
+_data_backend = configure_data_backend(postgres_timeout_s=30.0)
+print(f" [API] Historical data backend: {_data_backend}")
 
 from app import initialize_pipeline, process_query
 from utils import chat_store
@@ -24,7 +31,6 @@ from utils import query_log
 from utils.llm import active_model_label, describe_config, get_model_name
 from utils.season_calendar import get_season_calendar, list_calendar_years
 
-ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "frontend" / "dist"
 
 _ready = False

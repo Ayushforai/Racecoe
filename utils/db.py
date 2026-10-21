@@ -18,7 +18,12 @@ def database_url() -> str:
 
 def normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
-        return "postgresql://" + url[len("postgres://") :]
+        url = "postgresql://" + url[len("postgres://") :]
+    # Neon, Supabase, and most cloud Postgres require TLS.
+    cloud_hosts = (".neon.tech", ".supabase.co", "pooler.supabase.com", "render.com")
+    if any(host in url for host in cloud_hosts) and "sslmode=" not in url:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}sslmode=require"
     return url
 
 

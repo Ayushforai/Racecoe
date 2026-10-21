@@ -1,12 +1,14 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+_ROOT = Path(__file__).resolve().parent
+os.chdir(_ROOT)
+load_dotenv(_ROOT / ".env")
 
 from utils.terminal_input import read_user_query
 
-import os
 import re
 from datetime import datetime
 
@@ -2659,6 +2661,11 @@ def _rag_warmup_categories() -> list[str] | None:
 
 def initialize_pipeline() -> None:
     """Load FX rates and warm the embedding model once per process."""
+    from utils.historical_db import csv_available, reload_historical_csvs_if_needed
+
+    reload_historical_csvs_if_needed()
+    if not csv_available():
+        print(" [historical] Warning: archive not loaded (see logs above).")
     print("Initializing Hybrid F1 Race Engineer Pipeline...")
     rates = refresh_exchange_rates()
     if rates["source"].startswith("live"):

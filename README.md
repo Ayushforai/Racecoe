@@ -107,7 +107,27 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 | **Docker** | Docker Desktop running (required for the default Postgres + app stack) |
 | **Data in repo** | Historical CSVs (loaded into Postgres on first Docker boot), FAISS indexes under `vector_store/`, FIA PDFs under `data/` |
 
-### Recommended: Docker (Postgres default)
+### Recommended: Hosted PostgreSQL (Option C)
+
+Use a **cloud Postgres** for the Ergast archive (and optional chat sessions). No Kaggle download on each machine.
+
+| Provider | Typical use |
+|----------|-------------|
+| **Render** | `render.yaml` provisions `racecoe-db` + injects `DATABASE_URL` into the Docker web service |
+| **Neon / Supabase** | Create a DB, set `DATABASE_URL` on Render (or locally), run bootstrap once |
+
+**One-time load from your laptop** (with `DATABASE_URL` in `.env`):
+
+```bash
+cp .env.example .env    # DATABASE_URL, HISTORICAL_BACKEND=postgres, SESSION_STORE=postgres
+python scripts/bootstrap_hosted_db.py
+```
+
+**Production (Render):** ensure the web service has `DATABASE_URL`, `HISTORICAL_BACKEND=postgres`, and `SESSION_STORE=postgres` (Blueprint sets these). Redeploy and confirm `/api/health` shows `historical_using_postgres: true` and `archive_rows` > 0.
+
+Full walkthrough: **[docs/hosted-postgres.md](docs/hosted-postgres.md)**.
+
+### Docker (local Postgres + app)
 
 Docker Desktop must be **started** before this command. If the engine is down you will see `dockerDesktopLinuxEngine` / named-pipe errors.
 
