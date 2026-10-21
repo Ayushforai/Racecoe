@@ -74,7 +74,7 @@
   --f1-text: #ffffff;
   --nav-height: 56px;
   --race-height: 40px;
-  --composer-min-height: 52px;
+  --composer-min-height: 88px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --font-ui: "Century Gothic", "Segoe UI", sans-serif;
   --font-chat: "Century Gothic", "Segoe UI", sans-serif;
@@ -102,7 +102,7 @@ body,
 }
 
 body {
-  background: var(--f1-black);
+  background: #000;
   color: var(--f1-text);
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
@@ -154,8 +154,8 @@ a {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(1200px 500px at 80% -10%, rgba(225, 6, 0, 0.16), transparent 55%),
-    var(--f1-black);
+    radial-gradient(90% 70% at 50% 115%, rgba(225, 6, 0, 0.72) 0%, rgba(225, 6, 0, 0.18) 42%, transparent 70%),
+    linear-gradient(180deg, #000000 0%, #0a0000 38%, #2a0303 72%, #5c0606 100%);
 }
 
 .main-stage {

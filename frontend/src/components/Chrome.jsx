@@ -40,6 +40,12 @@ export default function TopNav({ tab, onTab, onReset }) {
           >
             Pit Wall
           </button>
+          <button
+            className={`nav-link ${tab === "about" ? "active" : ""}`}
+            onClick={() => onTab("about")}
+          >
+            About
+          </button>
         </nav>
         <div className="nav-right">
           <button className="icon-btn" onClick={onReset} title="New session" aria-label="New session">
@@ -197,16 +203,12 @@ export function Hero({ tab, onTab, year }) {
       <h1>
         <img className="hero-logo" src={racecoeLogo} alt="Racecoe" />
       </h1>
-      <p className="hero-tagline">Hybrid Formula 1 chatbot: Live telemetry, race history, and FIA regulations</p>
       <div className="tabs">
         <button className={tab === "chat" ? "active" : ""} onClick={() => onTab("chat")}>
           Chat
         </button>
         <button className={tab === "schedule" ? "active" : ""} onClick={() => onTab("schedule")}>
           Schedule
-        </button>
-        <button className={tab === "about" ? "active" : ""} onClick={() => onTab("about")}>
-          About
         </button>
       </div>
     </section>
