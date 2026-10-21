@@ -26,11 +26,13 @@ DEFAULT_MODELS = {
 # Tried in order after the primary model when Gemini returns 429/5xx overload.
 DEFAULT_GEMINI_FALLBACKS = (
     "gemini-3.6-flash",
-    "gemini-2.0-flash",
+    "gemini-3.5-flash-lite",
 )
 
-# Transient Google / proxy failures worth retrying.
+# Transient Google / proxy failures worth retrying (same request, backoff).
 _RETRYABLE_HTTP = {429, 500, 502, 503, 504}
+# Try the next model in the chain (e.g. retired model id → 404 NOT_FOUND).
+_GEMINI_CHAIN_ADVANCE_HTTP = _RETRYABLE_HTTP | {404}
 
 OPENAI_COMPAT_BASES = {
     "groq": "https://api.groq.com/openai/v1",
@@ -341,8 +343,8 @@ def _generate_gemini(
         except RuntimeError as exc:
             last_error = exc
             msg = str(exc)
-            # Only fall through to the next model on transient overload / rate limits.
-            if not any(f"API error {code}" in msg for code in _RETRYABLE_HTTP):
+            # Next model on overload, or when a fallback id was retired (404).
+            if not any(f"API error {code}" in msg for code in _GEMINI_CHAIN_ADVANCE_HTTP):
                 raise
             continue
     if last_error is not None:

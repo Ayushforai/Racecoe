@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { fetchHealth, resetChat, sendMessage } from "../api.js";
 import AnswerBody from "./AnswerBody.jsx";
 
+const WELCOME_EXIT_MS = 560;
+
 const SUGGESTIONS = [
   "What is the cost cap for 2026?",
   "Results of Monaco GP 2021",
@@ -43,6 +45,7 @@ export default function Chat({ pendingQuery, onPendingConsumed }) {
   const [busy, setBusy] = useState(false);
   const [health, setHealth] = useState({ ready: false, error: null, model: "" });
   const [banner, setBanner] = useState("Warming telemetry and embedding model…");
+  const [welcomePhase, setWelcomePhase] = useState("in");
   const scroller = useRef(null);
   const input = useRef(null);
 
@@ -79,9 +82,20 @@ export default function Chat({ pendingQuery, onPendingConsumed }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, busy]);
 
+  useEffect(() => {
+    if (welcomePhase !== "out") return undefined;
+    const timer = window.setTimeout(() => setWelcomePhase("gone"), WELCOME_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [welcomePhase]);
+
+  function startWelcomeExit() {
+    setWelcomePhase((phase) => (phase === "in" ? "out" : phase));
+  }
+
   async function submit(text) {
     const query = (text ?? draft).trim();
     if (!query || busy) return;
+    startWelcomeExit();
     setDraft("");
     setMessages((prev) => [...prev, { role: "user", text: query }]);
     setBusy(true);
@@ -123,6 +137,7 @@ export default function Chat({ pendingQuery, onPendingConsumed }) {
     }
     setMessages([]);
     setDraft("");
+    setWelcomePhase("in");
     input.current?.focus();
   }
 
@@ -142,18 +157,21 @@ export default function Chat({ pendingQuery, onPendingConsumed }) {
         <span>{banner}</span>
       </div>
 
-      {messages.length === 0 ? (
-        <div className="suggestions">
-          {SUGGESTIONS.map((item) => (
-            <button key={item} className="chip" onClick={() => submit(item)} disabled={busy || !health.ready}>
-              {item}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="transcript" ref={scroller}>
-        {messages.length === 0 ? (
+      {welcomePhase === "gone" ? null : (
+        <div className={`welcome ${welcomePhase === "out" ? "is-leaving" : ""}`}>
+          <div className="suggestions">
+            {SUGGESTIONS.map((item, i) => (
+              <button
+                key={item}
+                className="chip"
+                style={{ "--baseline-delay": `${i * 45}ms` }}
+                onClick={() => submit(item)}
+                disabled={busy || !health.ready}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
           <div className="empty-state">
             <h2>Pit wall radio</h2>
             <p>
@@ -161,9 +179,11 @@ export default function Chat({ pendingQuery, onPendingConsumed }) {
               Follow-ups stay in session — try “who finished second?” after a results query.
             </p>
           </div>
-        ) : (
-          messages.map((msg, i) => <Message key={i} {...msg} />)
-        )}
+        </div>
+      )}
+
+      <div className="transcript" ref={scroller}>
+        {messages.map((msg, i) => <Message key={i} {...msg} />)}
         {busy ? (
           <article className="message assistant">
             <div className="bubble">

@@ -641,9 +641,7 @@
   gap: 8px;
   margin-bottom: 16px;
   flex-shrink: 0;
-  max-height: min(32vh, 220px);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
 
 .chip {
@@ -661,8 +659,11 @@
 
 .chip:hover {
   background: #2a2a34;
-  transform: translateY(-2px);
   box-shadow: var(--under-shadow);
+}
+
+.welcome:not(.is-leaving) .chip:hover {
+  transform: translateY(-2px);
 }
 
 .transcript {
@@ -675,8 +676,64 @@
   min-height: 0;
 }
 
+.welcome {
+  flex-shrink: 0;
+  overflow: hidden;
+  max-height: 280px;
+}
+
+.welcome.is-leaving {
+  pointer-events: none;
+  animation: welcome-baseline-collapse 0.36s cubic-bezier(0.55, 0.06, 0.68, 0.19) 0.2s forwards;
+}
+
+.welcome.is-leaving .chip,
+.welcome.is-leaving .empty-state h2,
+.welcome.is-leaving .empty-state p {
+  overflow: hidden;
+  transform-origin: 50% 100%;
+  animation: canva-baseline-out 0.42s cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards;
+}
+
+.welcome.is-leaving .chip {
+  animation-delay: var(--baseline-delay, 0ms);
+  transition: none;
+}
+
+.welcome.is-leaving .empty-state h2 {
+  animation-delay: 180ms;
+}
+
+.welcome.is-leaving .empty-state p {
+  animation-delay: 230ms;
+}
+
+.welcome.is-leaving .chip:hover {
+  background: var(--f1-panel);
+  box-shadow: none;
+}
+
+@keyframes canva-baseline-out {
+  0% {
+    transform: translateY(0) scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(10%) scaleY(0);
+    opacity: 0;
+  }
+}
+
+@keyframes welcome-baseline-collapse {
+  to {
+    max-height: 0;
+    margin: 0;
+    opacity: 0;
+  }
+}
+
 .empty-state {
-  margin: auto;
+  margin: 8px 0 12px;
   text-align: left;
   max-width: 520px;
   color: var(--f1-muted);
@@ -778,7 +835,11 @@
   .stage-panel,
   .race-slide,
   .calendar-list li,
-  .mobile-menu.open {
+  .mobile-menu.open,
+  .welcome.is-leaving,
+  .welcome.is-leaving .chip,
+  .welcome.is-leaving .empty-state h2,
+  .welcome.is-leaving .empty-state p {
     animation: none;
   }
 }
@@ -1396,7 +1457,7 @@
   }
 
   .suggestions {
-    max-height: min(26vh, 160px);
+    gap: 6px;
   }
 
   .message {

@@ -298,7 +298,7 @@ One codebase supports both via `utils/llm.py` (`LLM_PROVIDER` + optional `LLM_MO
 
 `gemini-3.8-flash` is the newest Flash workhorse and is available on the Gemini API free tier (rate-limited). Racecoe defaults to it for deploy. Older IDs like `gemini-3.6-flash` still work via `LLM_MODEL`.
 
-**Gemini overload (503):** On the free Flash API, Google may return `503 UNAVAILABLE` with *“This model is currently experiencing high demand”*. That is an **LLM provider** failure — archive/RAG context can be fine while chat still fails. Racecoe retries with backoff and falls back across models (`gemini-3.6-flash`, then `gemini-2.0-flash`) via `utils/llm.py` / `GEMINI_FALLBACK_MODELS`.
+**Gemini overload (503):** On the free Flash API, Google may return `503 UNAVAILABLE` with *“This model is currently experiencing high demand”*. That is an **LLM provider** failure — archive/RAG context can be fine while chat still fails. Racecoe retries with backoff and falls back across models (`gemini-3.6-flash`, then `gemini-3.5-flash-lite`) via `utils/llm.py` / `GEMINI_FALLBACK_MODELS`.
 
 ### Google One Plus vs Gemini API
 
@@ -568,7 +568,7 @@ These are separate failure modes that both blocked public historical Q&A until f
 
 | Incident | What users saw | Root cause | Fix |
 |----------|----------------|------------|-----|
-| **Gemini overload** | Chat failed on follow-ups (raw API error / “stream interrupted”) even when race CSV context was present | Gemini API **`503 UNAVAILABLE`** — *“This model is currently experiencing high demand”* on `gemini-3.8-flash` free tier | Retries + exponential backoff; fallback chain `gemini-3.6-flash` → `gemini-2.0-flash`; clearer user-facing overload message |
+| **Gemini overload** | Chat failed on follow-ups (raw API error / “stream interrupted”) even when race CSV context was present | Gemini API **`503 UNAVAILABLE`** — *“This model is currently experiencing high demand”* on `gemini-3.8-flash` free tier | Retries + exponential backoff; fallback chain `gemini-3.6-flash` → `gemini-3.5-flash-lite`; clearer user-facing overload message |
 | **Render free-tier OOM** | Site never became healthy / deploy failed (“no open ports”, then crash) | **512MB RAM** exceeded while eagerly loading CUDA torch + embedding weights before uvicorn bound | CPU-only torch image; lazy import of sentence-transformers; `F1_SKIP_WARMUP=1` so the API becomes ready without preloading embeddings (RAG loads on first use) |
 
 **Takeaway:** overload = temporary **LLM API** unavailability; OOM = **host memory** killing the process. Both are documented in Evaluation because both made public historical Q&A unavailable until mitigated.

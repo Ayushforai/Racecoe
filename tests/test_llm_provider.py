@@ -129,7 +129,7 @@ class TestLlmProviderAbstraction(unittest.TestCase):
                 "GEMINI_API_KEY": "test-key",
                 "LLM_MODEL": "gemini-3.8-flash",
                 "LLM_RETRY_ATTEMPTS": "1",
-                "GEMINI_FALLBACK_MODELS": "gemini-2.0-flash",
+                "GEMINI_FALLBACK_MODELS": "gemini-3.5-flash-lite",
             },
             clear=False,
         ), patch("utils.llm.requests.post", side_effect=[fail, success]) as post, patch(
@@ -142,7 +142,34 @@ class TestLlmProviderAbstraction(unittest.TestCase):
         first_url = post.call_args_list[0].args[0]
         second_url = post.call_args_list[1].args[0]
         self.assertIn("gemini-3.8-flash", first_url)
-        self.assertIn("gemini-2.0-flash", second_url)
+        self.assertIn("gemini-3.5-flash-lite", second_url)
+
+    def test_gemini_skips_retired_model_on_404(self):
+        ok = {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+        overloaded = Mock(status_code=503, text="high demand")
+        retired = Mock(status_code=404, text="model gemini-2.0-flash is no longer available")
+        success = Mock(status_code=200, text="ok")
+        success.json.return_value = ok
+
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_PROVIDER": "gemini",
+                "GEMINI_API_KEY": "test-key",
+                "LLM_MODEL": "gemini-3.8-flash",
+                "LLM_RETRY_ATTEMPTS": "1",
+                "GEMINI_FALLBACK_MODELS": "gemini-2.0-flash,gemini-3.5-flash-lite",
+            },
+            clear=False,
+        ), patch(
+            "utils.llm.requests.post", side_effect=[overloaded, retired, success]
+        ) as post, patch("utils.llm.time.sleep"):
+            result = llm.generate(system="sys", prompt="hi")
+
+        self.assertEqual(result["response"], "ok")
+        self.assertEqual(post.call_count, 3)
+        self.assertIn("gemini-2.0-flash", post.call_args_list[1].args[0])
+        self.assertIn("gemini-3.5-flash-lite", post.call_args_list[2].args[0])
 
 
 if __name__ == "__main__":
