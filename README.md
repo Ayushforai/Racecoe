@@ -28,6 +28,12 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 
 ---
 
+## Live Video Demo ⏩
+
+https://github.com/user-attachments/assets/f2d54cf7-b72e-4620-a53f-8d4d50ae9e4e
+
+---
+
 ## Features ✨
 
 ### Routing & clarification 🔀
