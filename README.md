@@ -6,7 +6,7 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 
 **Tagline:** Hybrid Formula 1 chatbot — live telemetry, race history, and FIA regulations.
 
-**Live site:** [https://racecoe.onrender.com](https://racecoe.onrender.com) (Docker + PostgreSQL on Render; Gemini + OpenF1 in production).
+**Live site:** [https://racecoe.onrender.com](https://racecoe.onrender.com) — Docker on **Render**, historical archive in **hosted PostgreSQL** (Render Blueprint or **Neon**), **Gemini 3.8 Flash** + **OpenF1** in production.
 
 ---
 
@@ -19,12 +19,12 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 | **LLM** | [Ollama](https://ollama.com/) locally (`qwen2.5:7b-instruct-q8_0`); **Gemini 3.8 Flash** in production via `utils/llm.py` (Groq / OpenAI / Grok optional) |
 | **Embeddings & RAG** | LangChain, `langchain-huggingface`, **FAISS** (`faiss-cpu`), **BAAI/bge-base-en-v1.5**, PyTorch (CPU in Docker) |
 | **PDF / indexes** | `pypdf`, `pdf_processor.py`, `historical_processor.py` |
-| **Data** | **PostgreSQL** (`f1.*` archive + `chat.*` sessions) in Docker/Render; **pandas** CSVs as fallback without `DATABASE_URL`; **OpenF1** REST API, Frankfurter FX API, optional **Kaggle** download (`kagglehub`) |
+| **Data** | **PostgreSQL** (`f1.*` Ergast archive + `chat.*` sessions) via `DATABASE_URL` — **Render Postgres**, **Neon**, or **Supabase**; unified boot in `utils/runtime_boot.py`; **pandas** CSV fallback when no DB; **OpenF1**, Frankfurter FX; optional Kaggle auto-fetch (`utils/historical_archive.py`) |
 | **Frontend** | **React 18**, **Vite 6**, plain CSS (F1-themed tokens), Google Fonts (Oswald, Titillium Web, Merriweather) |
-| **Deploy** | **Docker**, `docker-compose.yml`, **Render** (`render.yaml`), health checks + smoke script |
-| **Testing** | `unittest` (235+ cases), Node test runner for answer formatting, `scripts/smoke_deploy.py` |
+| **Deploy** | **Docker**, `docker-compose.yml`, **Render** (`render.yaml`), `/api/health` (incl. `database.archive_rows`), `scripts/smoke_deploy.py`, `scripts/bootstrap_hosted_db.py` |
+| **Testing** | `unittest` (240+ cases), Node test runner for answer formatting, `scripts/smoke_deploy.py` |
 
-**Environment & secrets:** `.env` — `HF_TOKEN`, `GEMINI_API_KEY` (or other `LLM_*` keys), optional `RAG_WARMUP_CATEGORIES`, `F1_SKIP_WARMUP`, `CORS_ORIGINS`. Docker/Render set `DATABASE_URL`, `HISTORICAL_BACKEND=postgres`, and `SESSION_STORE=postgres`.
+**Environment & secrets:** `.env` — `HF_TOKEN`, `GEMINI_API_KEY` (or other `LLM_*` keys), optional `RAG_WARMUP_CATEGORIES`, `F1_SKIP_WARMUP`, `CORS_ORIGINS`. Production: `DATABASE_URL`, `HISTORICAL_BACKEND=postgres`, `SESSION_STORE=postgres` (see [Hosted PostgreSQL](#recommended-hosted-postgresql-option-c) and [docs/hosted-postgres.md](docs/hosted-postgres.md)).
 
 ---
 
@@ -47,8 +47,10 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 - **OpenF1 timeouts** — HTTP calls use a 15s timeout so a stuck API cannot hang chat indefinitely
 
 ### Historical data (Postgres archive + RAG) 📃
-- **Full race classifications** — pre-2026 result queries use the archive (`f1.results` in Docker/Render, or CSVs without a DB): every finisher, DNFs, and fastest laps (not just the top 10)
+- **Full race classifications** — pre-2026 result queries use the archive (`f1.results` when `DATABASE_URL` is set, else bundled CSVs): every finisher, DNFs, and fastest laps (not just the top 10)
 - **Driver-team lookups** — career questions like “Which team did Hamilton drive for in 2012?” resolve from archive results (supports surname or full name, e.g. “Lance Stroll”)
+- **Hosted archive bootstrap** — `server.py` and `scripts/start_web.py` apply `db/schema.sql`, load Ergast into `f1.*` on first connect, and expose status on `/api/health` (`historical_using_postgres`, `archive_rows`)
+- **Reliable CSV path** — repo-root paths, optional Kaggle auto-download, and Postgres-first dispatch (`historical_db` → `historical_pg`) so production does not depend on process working directory
 - **Historical RAG** — FAISS search over processed race documents for broader historical questions
 - **Venue-aware matching** — country/circuit synonyms map correctly to the right Grand Prix
 
@@ -109,21 +111,31 @@ Racecoe is a hybrid Formula 1 assistant (formerly the F1 Pit Wall chatbot). It r
 
 ### Recommended: Hosted PostgreSQL (Option C)
 
-Use a **cloud Postgres** for the Ergast archive (and optional chat sessions). No Kaggle download on each machine.
+Use a **cloud Postgres** for the Ergast archive and chat sessions. The app **queries SQL in production** — no per-machine Kaggle setup once the archive is loaded.
 
-| Provider | Typical use |
-|----------|-------------|
-| **Render** | `render.yaml` provisions `racecoe-db` + injects `DATABASE_URL` into the Docker web service |
-| **Neon / Supabase** | Create a DB, set `DATABASE_URL` on Render (or locally), run bootstrap once |
+| Provider | Cost | Typical use |
+|----------|------|-------------|
+| **Neon** / **Supabase** | Free tier available | Paste **pooled** connection URI into Render → **Environment** as `DATABASE_URL` |
+| **Render Postgres** | Paid | `render.yaml` Blueprint provisions `racecoe-db` and wires `DATABASE_URL` automatically |
 
-**One-time load from your laptop** (with `DATABASE_URL` in `.env`):
+**Checklist (e.g. Render web service + Neon DB):**
+
+1. Neon → **Connect** → copy **pooled** URI (`sslmode=require` — added automatically for `*.neon.tech`).
+2. Render → **racecoe** → **Environment** → add:
+   - `DATABASE_URL` = Neon URI  
+   - `HISTORICAL_BACKEND` = `postgres`  
+   - `SESSION_STORE` = `postgres`  
+3. **One-time load** from your laptop (faster than loading on a 512MB Render instance):
 
 ```bash
-cp .env.example .env    # DATABASE_URL, HISTORICAL_BACKEND=postgres, SESSION_STORE=postgres
+cp .env.example .env    # same DATABASE_URL + postgres backends
 python scripts/bootstrap_hosted_db.py
 ```
 
-**Production (Render):** ensure the web service has `DATABASE_URL`, `HISTORICAL_BACKEND=postgres`, and `SESSION_STORE=postgres` (Blueprint sets these). Redeploy and confirm `/api/health` shows `historical_using_postgres: true` and `archive_rows` > 0.
+4. Redeploy Render (or push to `main` if auto-deploy is on).
+5. Verify: `GET /api/health` → `database.database_url_set`, `historical_using_postgres`, and `archive_rows` **> 0**.
+
+`python server.py` locally runs the same `configure_data_backend()` boot when `DATABASE_URL` is set.
 
 Full walkthrough: **[docs/hosted-postgres.md](docs/hosted-postgres.md)**.
 
@@ -138,15 +150,17 @@ docker compose up --build           # Postgres + app — http://127.0.0.1:8000
 
 `docker compose up` always starts **Postgres and the app**. On first boot, `scripts/start_web.py` applies `db/schema.sql` and loads Ergast CSVs into `f1.*` if the archive is empty. Chat sessions go to `chat.*`. First boot can take 1–2 minutes; later starts skip the load.
 
-Deploy to **Render** with `render.yaml`; the Blueprint provisions `racecoe-db` and injects `DATABASE_URL`. Set `GEMINI_API_KEY` and `HF_TOKEN` in the dashboard. Smoke test:
+Deploy to **Render** with `render.yaml` (optional paid `racecoe-db`) **or** attach a **Neon** `DATABASE_URL` on the web service. Set `GEMINI_API_KEY` and `HF_TOKEN` in the dashboard. Smoke test:
 
 ```bash
 python scripts/smoke_deploy.py --http --base-url https://YOUR-URL
 ```
 
-### Without Docker (CSV fallback)
+### Without Docker
 
-`python server.py` with no `DATABASE_URL` uses pandas CSVs and in-memory sessions (same path as unit tests).
+**With `DATABASE_URL` in `.env`:** `python server.py` boots Postgres (schema + load-if-empty) then serves on **http://127.0.0.1:5001** — same archive path as production.
+
+**Without `DATABASE_URL`:** pandas CSVs and in-memory sessions (unit-test path). Missing CSVs can auto-download when `F1_AUTO_DOWNLOAD_HISTORICAL=1` and Kaggle credentials are set.
 
 ```bash
 python3 -m venv botenv
@@ -171,25 +185,16 @@ python server.py                    # http://127.0.0.1:5001 — CSV archive
 
 **CLI only:** `python app.py` from a **Terminal** tab (not the IDE Debug Console) so backspace/arrows work.
 
-### PostgreSQL (default in Docker)
-
-`docker compose up` starts **Postgres + the app**. On first boot, `scripts/start_web.py` applies `db/schema.sql` and loads Ergast CSVs into `f1.*` if the archive is empty. Chat sessions go to `chat.*`.
-
-`python server.py` without `DATABASE_URL` still uses CSVs and in-memory sessions (what the unit tests do).
-
-Local Postgres without the full stack:
+### Local Postgres only (optional)
 
 ```bash
 docker compose up -d postgres
-# DATABASE_URL=postgresql://racecoe:racecoe@127.0.0.1:5432/racecoe
-python scripts/init_postgres.py
-python scripts/load_ergast_to_postgres.py
-# HISTORICAL_BACKEND=postgres
-# SESSION_STORE=postgres
+# .env: DATABASE_URL=postgresql://racecoe:racecoe@127.0.0.1:5432/racecoe
+python scripts/bootstrap_hosted_db.py   # or init_postgres.py + load_ergast_to_postgres.py
 python server.py
 ```
 
-See [PostgreSQL in Racecoe](#postgresql-in-racecoe), [Models & deployment](#models--deployment-local-vs-production), [Setup (local)](#setup-local), and [RAG performance & deployment](#rag-performance--deployment).
+See [PostgreSQL in Racecoe](#postgresql-in-racecoe) and [RAG performance & deployment](#rag-performance--deployment).
 
 ---
 
@@ -435,7 +440,7 @@ Run `python app.py` from an integrated **Terminal** tab (not the Debug Console) 
 ```bash
 source botenv/bin/activate
 python server.py
-# open http://127.0.0.1:5001  (CSV fallback unless DATABASE_URL is set)
+# open http://127.0.0.1:5001  (Postgres when DATABASE_URL is set; else CSV fallback)
 ```
 
 For frontend hot-reload during UI work:
@@ -578,7 +583,7 @@ Checked during Docker + Render bring-up:
 |--------|-------------------|
 | Historical CSVs in image | **15/15** files under `/app/data/historical_csvs` |
 | FAISS indexes in image | **5/5** categories (`historical`, `sporting`, `technical`, `financial`, `operational`) |
-| `/api/health` | `ready: true`, `provider: gemini`, `model: gemini-3.8-flash`, `has_api_key: yes` |
+| `/api/health` | `ready: true`, `database.historical_using_postgres`, `database.archive_rows` > 0, `provider: gemini` |
 | Live smoke (Render) | Monaco results + follow-up **passed** on `https://racecoe.onrender.com` |
 | Port bind on Render | Must listen on injected `PORT` (observed `10000`) before health checks succeed |
 
@@ -590,6 +595,7 @@ These are separate failure modes that both blocked public historical Q&A until f
 |----------|----------------|------------|-----|
 | **Gemini overload** | Chat failed on follow-ups (raw API error / “stream interrupted”) even when race CSV context was present | Gemini API **`503 UNAVAILABLE`** — *“This model is currently experiencing high demand”* on `gemini-3.8-flash` free tier | Retries + exponential backoff; fallback chain `gemini-3.6-flash` → `gemini-3.5-flash-lite`; clearer user-facing overload message |
 | **Render free-tier OOM** | Site never became healthy / deploy failed (“no open ports”, then crash) | **512MB RAM** exceeded while eagerly loading CUDA torch + embedding weights before uvicorn bound | CPU-only torch image; lazy import of sentence-transformers; `F1_SKIP_WARMUP=1` so the API becomes ready without preloading embeddings (RAG loads on first use) |
+| **Missing `DATABASE_URL` on Render** | Historical Q&A showed “run setup_historical_data” / CSV errors | Web service env had no Postgres URL; app fell back to CSV paths | Set `DATABASE_URL` (Neon or Render DB) + `HISTORICAL_BACKEND=postgres`; `bootstrap_hosted_db.py` + unified `runtime_boot` |
 
 **Takeaway:** overload = temporary **LLM API** unavailability; OOM = **host memory** killing the process. Both are documented in Evaluation because both made public historical Q&A unavailable until mitigated.
 
@@ -630,7 +636,7 @@ app.py                  # Main chat loop, clarification flows, memory
 server.py               # FastAPI wrapper + serves frontend/dist
 pdf_processor.py        # Builds FAISS indexes from FIA PDFs
 historical_processor.py # Builds FAISS index from historical CSVs
-setup_historical_data.py # Downloads Kaggle historical dataset
+setup_historical_data.py # CLI wrapper for utils/historical_archive (Kaggle fetch)
 setup_driver_numbers.py # Fetches OpenF1 driver grid → data/driver_numbers.json
 frontend/               # Racecoe React (Vite) UI
 data/
@@ -643,8 +649,10 @@ utils/
   driver_names.py       # F1DriversDataset name resolution
   driver_numbers.py     # Driver name → car number resolution
   f1_api.py             # OpenF1 API client + lap time formatting
-  db.py                 # DATABASE_URL, schema apply, backend flags
-  historical_db.py      # Archive lookups (Postgres default in Docker; CSV fallback)
+  db.py                 # DATABASE_URL, TLS for Neon/Supabase, schema apply, backend flags
+  runtime_boot.py       # configure_data_backend(): wait, schema, Ergast load, CSV fallback
+  historical_archive.py # ensure_historical_csvs / optional Kaggle auto-download
+  historical_db.py      # Archive lookups (dispatches to historical_pg when SQL is ready)
   historical_pg.py      # SQL implementations of the same packets
   chat_store.py         # Session history (memory or Postgres)
   query_log.py          # Write-only question log (session_id / optional user_id)
@@ -658,9 +666,12 @@ db/
   schema.sql            # f1 / chat / rag / app
   schema_pgvector.sql   # optional embedding columns
 scripts/
-  start_web.py          # Docker/Render CMD: wait, schema, load-if-empty, uvicorn
+  start_web.py          # Docker/Render CMD: runtime_boot + uvicorn
+  bootstrap_hosted_db.py # One-time Ergast load into hosted DATABASE_URL
   init_postgres.py      # Apply schema to DATABASE_URL
   load_ergast_to_postgres.py
+docs/
+  hosted-postgres.md    # Option C: Render, Neon, Supabase setup
 tests/                  # Regression tests (incl. test_concurrent_sessions.py, test_session_fastest_lap.py)
 data/
   *.pdf                 # FIA regulation documents
@@ -672,15 +683,23 @@ ISSUES.md               # Bug backlog and fix history
 
 ## PostgreSQL in Racecoe
 
-Docker and Render treat SQL as the archive and session store. The same lookup functions in `utils/historical_db.py` dispatch to `utils/historical_pg.py` when `HISTORICAL_BACKEND=postgres` (or `auto` with a loaded `f1.races` table). `server.py` uses `utils/chat_store.py` the same way.
+The Ergast historical archive lives in **`f1.*`** (races, results, drivers, lap times, standings, …). Chat turns can persist in **`chat.*`**. Lookup code in `utils/historical_db.py` delegates to `utils/historical_pg.py` when `uses_postgres_historical()` is true (`HISTORICAL_BACKEND=postgres` or `auto` with rows in `f1.races`). Sessions use the same pattern via `utils/chat_store.py`.
+
+**Boot flow** (`utils/runtime_boot.configure_data_backend()`), shared by `server.py`, `scripts/start_web.py`, and `scripts/bootstrap_hosted_db.py`:
+
+1. If `DATABASE_URL` is set → wait for Postgres (TLS auto for Neon / Supabase / Render hosts).
+2. Apply `db/schema.sql` (+ optional pgvector).
+3. If `f1.races` is empty → load from `data/historical_csvs/` (bundled in Docker; optional Kaggle fetch locally).
+4. Set `HISTORICAL_BACKEND` / `SESSION_STORE` to `postgres`, or fall back to CSV + in-memory sessions if the DB is unreachable.
 
 | Path | What you get |
 |------|----------------|
-| `docker compose up` / Render Blueprint | Always-on Postgres, `DATABASE_URL` injected, schema + CSV load on empty DB |
-| `python server.py` with no `DATABASE_URL` | CSV archive + in-memory sessions (tests stay offline) |
-| Unreachable DB at boot | `start_web.py` falls back to CSV so the API still starts |
+| **Option C** — Neon/Supabase/Render + `DATABASE_URL` on web service | Production SQL archive; bootstrap once with `bootstrap_hosted_db.py` |
+| `docker compose up` | Local Postgres + app on `:8000`, same boot |
+| `python server.py` + `DATABASE_URL` in `.env` | Local API on `:5001` against hosted or local Postgres |
+| No `DATABASE_URL` | CSV archive + in-memory chat (tests, offline dev) |
 
-Benefits you can see in practice: indexed joins instead of full CSV scans, chat history that survives process restarts, and a clear module boundary (`csv` vs `postgres`) without changing the chat router.
+Confirm with **`GET /api/health`** → `database.historical_using_postgres`, `database.archive_rows`, `database.reachable`.
 
 FAISS regulation/history RAG and live OpenF1 HTTP are **not** stored in Postgres.
 
@@ -690,7 +709,7 @@ FAISS regulation/history RAG and live OpenF1 HTTP are **not** stored in Postgres
 - **Historical CSVs**: From the [Kaggle F1 dataset](https://www.kaggle.com/datasets/rohanrao/formula-1-world-championship-1950-2020) (1950–2020)
 - **Archive PDFs**: Older regulation PDFs in `data/archive/` are gitignored due to size; add them locally if needed
 - **OpenF1**: Used for 2021+ live and lap data; pre-2026 race results and lap deltas come from the historical archive (Postgres in Docker/Render; CSVs when `DATABASE_URL` is unset)
-- **PostgreSQL**: Default for Compose and Render. Schemas: `f1` (Ergast archive), `chat` (sessions), `rag` / `app` (reserved). FAISS and live OpenF1 stay outside SQL.
+- **PostgreSQL**: Recommended for production (Neon free tier or Render paid DB). Schemas: `f1` (Ergast archive), `chat` (sessions), `rag` / `app` (reserved). FAISS and live OpenF1 stay outside SQL.
 
 ## RAG performance & deployment
 
